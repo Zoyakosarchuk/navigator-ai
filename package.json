@@ -1,0 +1,13 @@
+{
+  "name": "navigator-ai-backend",
+  "version": "1.0.0",
+  "description": "AI-бэкенд отчёта «Навигатор будущего» с переключателем провайдера (OpenAI / GigaChat / YandexGPT)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
