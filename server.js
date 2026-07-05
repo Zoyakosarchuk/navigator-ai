@@ -208,6 +208,47 @@ async function callModel(messages) {
   throw new Error('Неизвестный PROVIDER: ' + PROVIDER);
 }
 
+// ---------- YandexART: персональная «карточка личности» ----------
+const YANDEX_ART_MODEL = process.env.YANDEX_ART_MODEL || 'yandex-art/latest';
+const CARD_ENABLED = process.env.CARD_IMAGE !== '0'; // выключить картинку целиком: CARD_IMAGE=0
+function cardPrompt(profile) {
+  const a = profile['архетип_ведущий'] || profile['код'] || 'личность';
+  return 'Символическая вдохновляющая арт-иллюстрация, образ архетипа «' + a + '», метафора внутренней силы и потенциала человека, современный цифровой постер, мягкие плавные градиенты в фиолетово-синих и тёплых золотистых тонах, атмосферно и стильно, высокое качество, без текста, без букв, без надписей';
+}
+async function yandexArt(prompt) {
+  const submit = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Api-Key ' + YANDEX_API_KEY },
+    body: JSON.stringify({
+      modelUri: 'art://' + YANDEX_FOLDER_ID + '/' + YANDEX_ART_MODEL,
+      generationOptions: { aspectRatio: { widthRatio: '1', heightRatio: '1' } },
+      messages: [{ weight: 1, text: prompt }]
+    })
+  });
+  if (!submit.ok) throw new Error('YandexART submit ' + submit.status + ': ' + (await submit.text()));
+  const op = await submit.json();
+  const id = op.id;
+  for (let i = 0; i < 30; i++) {                 // ждём готовности до ~60 сек
+    await new Promise(r => setTimeout(r, 2000));
+    const pr = await fetch('https://llm.api.cloud.yandex.net/operations/' + id, {
+      headers: { 'Authorization': 'Api-Key ' + YANDEX_API_KEY }
+    });
+    if (!pr.ok) throw new Error('YandexART poll ' + pr.status);
+    const pd = await pr.json();
+    if (pd.done) {
+      if (pd.error) throw new Error('YandexART op: ' + JSON.stringify(pd.error));
+      const b64 = pd.response && pd.response.image;
+      if (!b64) throw new Error('YandexART: пустой ответ');
+      return 'data:image/jpeg;base64,' + b64;
+    }
+  }
+  throw new Error('YandexART timeout');
+}
+async function makeCard(profile) {
+  if (!(PROVIDER === 'yandexgpt' && CARD_ENABLED && YANDEX_API_KEY && YANDEX_FOLDER_ID)) return null;
+  return yandexArt(cardPrompt(profile));
+}
+
 // ---------- HTTP-сервер ----------
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
@@ -227,8 +268,12 @@ const server = http.createServer((req, res) => {
     try {
       const profile = JSON.parse(body || '{}');
       const messages = buildMessages(profile);
-      const raw = await callModel(messages);
+      const [raw, cardImage] = await Promise.all([
+        callModel(messages),
+        makeCard(profile).catch(e => { console.error('[ART] ошибка:', e.message); return null; })
+      ]);
       const result = coerceResult(raw);
+      if (cardImage) result.card_image = cardImage;
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(result));
     } catch (e) {
