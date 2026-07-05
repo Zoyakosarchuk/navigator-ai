@@ -68,6 +68,7 @@ function buildMessages(profile) {
     '     "riasec": "расшифровка профессионального кода и где он раскроется",',
     '     "base": "про сильные стороны, мотивацию и ценности — как на них опираться",',
     '     "workstyle": "про рабочий стиль и роль в команде",',
+    '     "flow": "про состояние потока — где человек теряет счёт времени и как это использовать",',
     '     "ikigai": "про точку пересечения Икигай и куда двигаться",',
     '     "skills": "про готовность к миру ИИ и что развивать",',
     '     "klimov": "про близкий тип профессий (поле климов) и как выбирать",',
@@ -98,7 +99,7 @@ function coerceResult(raw) {
   }
   const sysIn = (obj.sys && typeof obj.sys === 'object') ? obj.sys : {};
   const sys = {};
-  ['big5','riasec','base','workstyle','ikigai','skills','klimov','burnout'].forEach(k => {
+  ['big5','riasec','base','workstyle','flow','ikigai','skills','klimov','burnout'].forEach(k => {
     if (sysIn[k]) sys[k] = String(sysIn[k]).trim();
   });
   const out = {
