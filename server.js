@@ -213,8 +213,22 @@ async function callModel(messages) {
 const YANDEX_ART_MODEL = process.env.YANDEX_ART_MODEL || 'yandex-art/latest';
 const CARD_ENABLED = process.env.CARD_IMAGE !== '0'; // выключить картинку целиком: CARD_IMAGE=0
 function cardPrompt(profile) {
-  const a = profile['архетип_ведущий'] || profile['код'] || 'личность';
-  return 'Символическая вдохновляющая арт-иллюстрация, образ архетипа «' + a + '», метафора внутренней силы и потенциала человека, современный цифровой постер, мягкие плавные градиенты в фиолетово-синих и тёплых золотистых тонах, атмосферно и стильно, высокое качество, без текста, без букв, без надписей';
+  const a   = profile['архетип_ведущий'] || 'личность';
+  const s   = Array.isArray(profile['силы']) ? profile['силы'].slice(0, 3).join(', ') : '';
+  const prof= (Array.isArray(profile['топ_профессии']) && profile['топ_профессии'][0]) ? profile['топ_профессии'][0] : '';
+  const drv = Array.isArray(profile['драйверы']) ? profile['драйверы'].slice(0, 2).join(' и ') : '';
+  const gender = (profile['пол'] || '').toString().trim();  // 'женщина' | 'мужчина' | ''
+  const hobby  = (profile['слова'] && profile['слова']['хобби']) ? String(profile['слова']['хобби']).trim() : '';
+  const who = gender ? ('Пол: ' + gender + '. ') : '';
+  const hob = hobby ? (' Обязательно отрази увлечения этого человека: ' + hobby + '.') : '';
+  const desc = 'Тип личности: ' + a
+    + (s    ? ('. Сильные стороны: ' + s) : '')
+    + (drv  ? ('. Что движет: ' + drv) : '')
+    + (prof ? ('. Близкая сфера: ' + prof) : '') + '.';
+  return 'Современная стильная символическая иллюстрация, которая отражает цельную личность человека как единый вдохновляющий образ. '
+    + who + desc + hob
+    + ' Стиль: чистая современная цифровая иллюстрация, светлая, позитивная и жизнеутверждающая, гармоничная композиция, приятные сдержанные цвета, качество обложки хорошего журнала о людях и карьере.'
+    + ' Без эзотерики и мистики, без религиозных и оккультных символов, без мандал, без третьего глаза, без свечения на лбу, без нимбов, без гипнотического крупного лица, без текста и без букв.';
 }
 async function yandexArt(prompt) {
   const submit = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync', {
