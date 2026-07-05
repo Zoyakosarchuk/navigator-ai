@@ -30,6 +30,9 @@ const GIGACHAT_AUTH_KEY = process.env.GIGACHAT_AUTH_KEY || ''; // Authorization 
 const GIGACHAT_SCOPE    = process.env.GIGACHAT_SCOPE || 'GIGACHAT_API_PERS';
 const GIGACHAT_MODEL    = process.env.GIGACHAT_MODEL || 'GigaChat';
 const GIGACHAT_INSECURE = process.env.GIGACHAT_INSECURE === '1'; // 1 = не проверять TLS (если не установлен корневой сертификат Минцифры)
+// Надёжный обход TLS для GigaChat: их сертификат подписан корневым Минцифры, которому Node не доверяет по умолчанию.
+// При GIGACHAT_INSECURE=1 отключаем проверку сертификата на уровне Node (работает и для fetch/undici).
+if (GIGACHAT_INSECURE) { process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; }
 
 // YandexGPT
 const YANDEX_API_KEY   = process.env.YANDEX_API_KEY || '';
