@@ -69,7 +69,7 @@ function buildMessages(profile) {
     '     "riasec": "расшифровка профессионального кода и где он раскроется",',
     '     "base": "про сильные стороны, мотивацию и ценности — как на них опираться",',
     '     "workstyle": "про рабочий стиль и роль в команде",',
-    '     "flow": "про состояние потока — где человек теряет счёт времени и как это использовать",',
+    '     "psyche": "про психософию (поле психософия — порядок начал В/Л/Э/Ф: воля, логика, эмоция, физика): что для человека первично и как это использовать",',
     '     "ikigai": "про точку пересечения Икигай и куда двигаться",',
     '     "skills": "про готовность к миру ИИ и что развивать",',
     '     "klimov": "про близкий тип профессий (поле климов) и как выбирать",',
@@ -100,7 +100,7 @@ function coerceResult(raw) {
   }
   const sysIn = (obj.sys && typeof obj.sys === 'object') ? obj.sys : {};
   const sys = {};
-  ['big5','riasec','base','workstyle','flow','ikigai','skills','klimov','burnout'].forEach(k => {
+  ['big5','riasec','base','workstyle','psyche','ikigai','skills','klimov','burnout'].forEach(k => {
     if (sysIn[k]) sys[k] = String(sysIn[k]).trim();
   });
   const out = {
@@ -220,12 +220,12 @@ function cardPrompt(profile) {
   const prof= (Array.isArray(profile['топ_профессии']) && profile['топ_профессии'][0]) ? profile['топ_профессии'][0] : '';
   const gender = (profile['пол'] || '').toString().trim();
   const hobby  = (profile['слова'] && profile['слова']['хобби']) ? String(profile['слова']['хобби']).trim().slice(0, 40) : '';
-  let p = 'Тёплая современная иллюстрация, образ личности';
+  let p = 'Тёплая современная иллюстрация — портрет-образ личности';
   if (gender) p += ' (' + gender + ')';
   p += ': ' + a;
   if (s)     p += ', ' + s;
-  if (prof)  p += ', близка сфера ' + prof;
-  if (hobby) p += '. Увлечения: ' + hobby;
+  if (hobby) p += '. В образе и на фоне ярко обыграй увлечения человека: ' + hobby;
+  if (prof)  p += '. Близка сфера ' + prof;
   p += '. Светлый вдохновляющий стиль, приятные цвета, реалистично, без текста.';
   return p.slice(0, 490);
 }
