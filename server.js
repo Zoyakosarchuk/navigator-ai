@@ -214,21 +214,20 @@ async function callModel(messages) {
 const YANDEX_ART_MODEL = process.env.YANDEX_ART_MODEL || 'yandex-art/latest';
 const CARD_ENABLED = process.env.CARD_IMAGE !== '0'; // выключить картинку целиком: CARD_IMAGE=0
 function cardPrompt(profile) {
+  // YandexART ограничивает промпт 500 символами — держим коротко
   const a   = profile['архетип_ведущий'] || 'личность';
-  const s   = Array.isArray(profile['силы']) ? profile['силы'].slice(0, 3).join(', ') : '';
+  const s   = Array.isArray(profile['силы']) ? profile['силы'].slice(0, 2).join(', ') : '';
   const prof= (Array.isArray(profile['топ_профессии']) && profile['топ_профессии'][0]) ? profile['топ_профессии'][0] : '';
-  const drv = Array.isArray(profile['драйверы']) ? profile['драйверы'].slice(0, 2).join(' и ') : '';
-  const gender = (profile['пол'] || '').toString().trim();  // 'женщина' | 'мужчина' | ''
-  const hobby  = (profile['слова'] && profile['слова']['хобби']) ? String(profile['слова']['хобби']).trim() : '';
-  const who = gender ? ('Пол: ' + gender + '. ') : '';
-  const hob = hobby ? (' Обязательно отрази увлечения этого человека: ' + hobby + '.') : '';
-  const desc = 'Тип личности: ' + a
-    + (s    ? ('. Сильные стороны: ' + s) : '')
-    + (drv  ? ('. Что движет: ' + drv) : '')
-    + (prof ? ('. Близкая сфера: ' + prof) : '') + '.';
-  return 'Стильная современная иллюстрация, которая отражает личность человека как цельный вдохновляющий образ. '
-    + who + desc + hob
-    + ' Стиль: тёплая современная цифровая иллюстрация, светлая и жизнеутверждающая, реалистичная и добрая, гармоничная композиция, приятные мягкие цвета, уровень обложки хорошего журнала о людях и карьере, без текста и без надписей.';
+  const gender = (profile['пол'] || '').toString().trim();
+  const hobby  = (profile['слова'] && profile['слова']['хобби']) ? String(profile['слова']['хобби']).trim().slice(0, 40) : '';
+  let p = 'Тёплая современная иллюстрация, образ личности';
+  if (gender) p += ' (' + gender + ')';
+  p += ': ' + a;
+  if (s)     p += ', ' + s;
+  if (prof)  p += ', близка сфера ' + prof;
+  if (hobby) p += '. Увлечения: ' + hobby;
+  p += '. Светлый вдохновляющий стиль, приятные цвета, реалистично, без текста.';
+  return p.slice(0, 490);
 }
 async function yandexArt(prompt) {
   const submit = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync', {
