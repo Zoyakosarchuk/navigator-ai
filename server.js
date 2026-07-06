@@ -19,6 +19,7 @@ const crypto = require('crypto');
 const PORT           = process.env.PORT || 8080;
 const PROVIDER       = (process.env.PROVIDER || 'openai').toLowerCase();
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // на проде: https://navigator-prof.ru
+const SHEETS_WEBHOOK = process.env.SHEETS_WEBHOOK || '';   // URL Google Apps Script → сбор «откуда узнали» в таблицу
 
 // OpenAI
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
@@ -225,10 +226,9 @@ function cardPrompt(profile) {
     + (s    ? ('. Сильные стороны: ' + s) : '')
     + (drv  ? ('. Что движет: ' + drv) : '')
     + (prof ? ('. Близкая сфера: ' + prof) : '') + '.';
-  return 'Современная стильная символическая иллюстрация, которая отражает цельную личность человека как единый вдохновляющий образ. '
+  return 'Стильная современная иллюстрация, которая отражает личность человека как цельный вдохновляющий образ. '
     + who + desc + hob
-    + ' Стиль: чистая современная цифровая иллюстрация, светлая, позитивная и жизнеутверждающая, гармоничная композиция, приятные сдержанные цвета, качество обложки хорошего журнала о людях и карьере.'
-    + ' Без эзотерики и мистики, без религиозных и оккультных символов, без мандал, без третьего глаза, без свечения на лбу, без нимбов, без гипнотического крупного лица, без текста и без букв.';
+    + ' Стиль: тёплая современная цифровая иллюстрация, светлая и жизнеутверждающая, реалистичная и добрая, гармоничная композиция, приятные мягкие цвета, уровень обложки хорошего журнала о людях и карьере, без текста и без надписей.';
 }
 async function yandexArt(prompt) {
   const submit = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync', {
@@ -264,6 +264,23 @@ async function makeCard(profile) {
   return yandexArt(cardPrompt(profile));
 }
 
+// ---------- Сбор «откуда узнали» в Google-таблицу ----------
+async function sendToSheet(profile) {
+  if (!SHEETS_WEBHOOK) return;
+  try {
+    await fetch(SHEETS_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        дата: new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }),
+        источник: profile['источник'] || '',
+        трек: profile['трек'] || '',
+        пол: profile['пол'] || ''
+      })
+    });
+  } catch (e) { console.error('[SHEET] ошибка:', e.message); }
+}
+
 // ---------- HTTP-сервер ----------
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
@@ -282,6 +299,8 @@ const server = http.createServer((req, res) => {
   req.on('end', async () => {
     try {
       const profile = JSON.parse(body || '{}');
+      if (profile['источник']) console.log('[SRC] откуда узнали:', profile['источник'], '· трек:', profile['трек'] || '-');
+      sendToSheet(profile);   // асинхронно, не тормозит отчёт
       const messages = buildMessages(profile);
       const [raw, cardImage] = await Promise.all([
         callModel(messages),
