@@ -232,7 +232,9 @@ function cardPrompt(profile) {
   p += '. Светлый вдохновляющий стиль, приятные цвета, реалистично, без текста.';
   return p.slice(0, 490);
 }
-async function yandexArt(prompt) {
+// Картинка разбита на два КОРОТКИХ запроса: отправить задачу и опросить одну операцию.
+// Так ни один запрос не живёт по минуте — платформа не убивает процесс за долготу.
+async function artSubmit(prompt) {
   const submit = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Api-Key ' + YANDEX_API_KEY },
@@ -244,26 +246,21 @@ async function yandexArt(prompt) {
   });
   if (!submit.ok) throw new Error('YandexART submit ' + submit.status + ': ' + (await submit.text()));
   const op = await submit.json();
-  const id = op.id;
-  for (let i = 0; i < 30; i++) {                 // ждём готовности до ~60 сек
-    await new Promise(r => setTimeout(r, 2000));
-    const pr = await fetch('https://llm.api.cloud.yandex.net/operations/' + id, {
-      headers: { 'Authorization': 'Api-Key ' + YANDEX_API_KEY }
-    });
-    if (!pr.ok) throw new Error('YandexART poll ' + pr.status);
-    const pd = await pr.json();
-    if (pd.done) {
-      if (pd.error) throw new Error('YandexART op: ' + JSON.stringify(pd.error));
-      const b64 = pd.response && pd.response.image;
-      if (!b64) throw new Error('YandexART: пустой ответ');
-      return 'data:image/jpeg;base64,' + b64;
-    }
-  }
-  throw new Error('YandexART timeout');
+  return op.id;
 }
-async function makeCard(profile) {
-  if (!(PROVIDER === 'yandexgpt' && CARD_ENABLED && YANDEX_API_KEY && YANDEX_FOLDER_ID)) return null;
-  return yandexArt(cardPrompt(profile));
+async function artPoll(id) {
+  const pr = await fetch('https://llm.api.cloud.yandex.net/operations/' + id, {
+    headers: { 'Authorization': 'Api-Key ' + YANDEX_API_KEY }
+  });
+  if (!pr.ok) throw new Error('YandexART poll ' + pr.status);
+  const pd = await pr.json();
+  if (!pd.done) return { done: false, image: null };
+  if (pd.error) throw new Error('YandexART op: ' + JSON.stringify(pd.error));
+  const b64 = pd.response && pd.response.image;
+  return { done: true, image: b64 ? ('data:image/jpeg;base64,' + b64) : null };
+}
+function cardAllowed() {
+  return (PROVIDER === 'yandexgpt' && CARD_ENABLED && YANDEX_API_KEY && YANDEX_FOLDER_ID);
 }
 
 // ---------- Сбор «откуда узнали» в Google-таблицу ----------
@@ -299,18 +296,41 @@ const server = http.createServer((req, res) => {
   let body = '';
   req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
   req.on('end', async () => {
+    const JSONH = { 'Content-Type': 'application/json; charset=utf-8' };
     try {
       const profile = JSON.parse(body || '{}');
+      const mode = profile.mode || '';
+
+      // === КАРТИНКА: короткий запрос «отправить задачу» → вернуть id операции ===
+      if (mode === 'image_submit') {
+        if (!cardAllowed()) { res.writeHead(200, JSONH); return res.end('{"opId":""}'); }
+        try {
+          const opId = await artSubmit(cardPrompt(profile));
+          res.writeHead(200, JSONH); return res.end(JSON.stringify({ opId: opId || '' }));
+        } catch (e) {
+          console.error('[ART] submit ошибка:', e.message);
+          res.writeHead(200, JSONH); return res.end('{"opId":""}');
+        }
+      }
+      // === КАРТИНКА: короткий запрос «опросить операцию» → {done, card_image} ===
+      if (mode === 'image_poll') {
+        try {
+          const st = await artPoll(profile.opId);
+          res.writeHead(200, JSONH);
+          return res.end(JSON.stringify({ done: st.done, card_image: st.image || '' }));
+        } catch (e) {
+          console.error('[ART] poll ошибка:', e.message);
+          res.writeHead(200, JSONH); return res.end('{"done":true,"card_image":""}');
+        }
+      }
+
+      // === ТЕКСТ: быстрый ответ, без ожидания картинки (её тянет фронт отдельно) ===
       if (profile['источник']) console.log('[SRC] откуда узнали:', profile['источник'], '· трек:', profile['трек'] || '-');
       sendToSheet(profile);   // асинхронно, не тормозит отчёт
       const messages = buildMessages(profile);
-      const [raw, cardImage] = await Promise.all([
-        callModel(messages),
-        makeCard(profile).catch(e => { console.error('[ART] ошибка:', e.message); return null; })
-      ]);
+      const raw = await callModel(messages);
       const result = coerceResult(raw);
-      if (cardImage) result.card_image = cardImage;
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.writeHead(200, JSONH);
       res.end(JSON.stringify(result));
     } catch (e) {
       console.error('[AI] ошибка:', e.message);
