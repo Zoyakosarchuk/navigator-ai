@@ -105,8 +105,9 @@ function buildNichesMessages(profile) {
     'Опирайся только на данные профиля (сильные стороны, ценности, мотивация, блок «бизнес»: формат, идея, ресурсы, тип). Если бизнес.идея задана — предлагай ниши внутри неё; если нет — предложи направления под склад человека.',
     'В рисках говори честно: реальные риски и что делать, если пойдёт не так.',
     'ФОРМАТ: строго один JSON-объект, без markdown:',
-    '{ "ниши": [ {"название":"...","суть":"1 предложение о сути","свот":{"сильные":"...","слабые":"...","возможности":"...","риски":"...","запасной_ход":"что делать, если пойдёт не так"}} ] }',
-    'ниши: от 3 до 5, конкретные и реалистичные для России. У каждой обязателен свот с честными рисками и запасным ходом.'
+    '{ "ниши": [ {"название":"...","суть":"1 предложение о сути","потенциал":"примерная денежная ёмкость: реалистичный ориентир дохода в рублях в месяц — на старте и при раскрутке, честным диапазоном","свот":{"сильные":"...","слабые":"...","возможности":"...","риски":"...","запасной_ход":"что делать, если пойдёт не так"}} ] }',
+    'ниши: от 3 до 5, конкретные и реалистичные для России. У каждой обязателен свот с честными рисками и запасным ходом.',
+    'потенциал: давай честный диапазон дохода (например «от 30–50 тыс на старте до 150–300 тыс при раскрутке»), без завышенных обещаний.'
   ].join('\n');
   const usr = 'Профиль предпринимателя:\n' + JSON.stringify(profile, null, 2) + '\n\nПодбери ниши и верни только JSON.';
   return [ { role: 'system', content: sys }, { role: 'user', content: usr } ];
@@ -122,6 +123,26 @@ function buildPlanMessages(profile) {
   ].join('\n');
   const usr = 'Ниша: ' + niche + '\n\nПрофиль:\n' + JSON.stringify(profile, null, 2) + '\n\nСобери мини-план и верни только JSON.';
   return [ { role: 'system', content: sys }, { role: 'user', content: usr } ];
+}
+
+// ---------- Своё дело: ядро отчёта двумя короткими запросами ----------
+function buildBizCoreMessages(profile, part) {
+  const common = [
+    'Ты — психолог-профориентолог и бизнес-наставник. Собираешь персональный разбор «Своё дело» для сервиса «Навигатор будущего».',
+    'Пиши по-русски, тёпло и на «вы». Принцип асимметрии, без канцелярита и клише. Опирайся только на данные профиля. Сильные стороны, Икигай и навыки связывай с потенциалом собственного дела.',
+    'ФОРМАТ: строго один JSON-объект, без markdown и пояснений.'
+  ];
+  let schema, extra = '';
+  if (part === 'a') {
+    schema = '{ "portrait":"3–4 абзаца портрета личности, разделены пустой строкой", "summary":"2 тёплых абзаца: кто человек по складу и в каком деле раскроется как основатель", "sys":{ "big5":"расшифровка черт характера и что с ними делать в деле", "riasec":"расшифровка кода и где раскроется", "base":"про сильные стороны, мотивацию и ценности как опору", "workstyle":"про рабочий стиль и роль в команде/деле", "psyche":"про психософию (поле психософия): что первично и как использовать" } }';
+  } else {
+    schema = '{ "sys":{ "ikigai":"про точку Икигай и куда двигаться в деле", "skills":"про готовность к миру ИИ и что развивать", "klimov":"про близкий тип деятельности (поле климов)", "burnout":"про состояние (поле выгорание 0–100) и что делать" }, "scenarios":[ {"prob":"метка вероятности","title":"путь","text":"1–2 предложения"} ] }';
+    extra = 'scenarios: ровно 3, метки вроде «наиболее вероятно», «по душе», «рычаг».';
+  }
+  const sysArr = common.concat(['Схема ответа:', schema, 'Каждый комментарий в sys — 2–4 живых предложения про ЭТОГО человека.']);
+  if (extra) sysArr.push(extra);
+  const usr = 'Данные профиля:\n' + JSON.stringify(profile, null, 2) + '\n\nВерни только JSON по схеме.';
+  return [ { role: 'system', content: sysArr.join('\n') }, { role: 'user', content: usr } ];
 }
 
 // ---------- Разбор и валидация ответа модели ----------
@@ -376,11 +397,28 @@ const server = http.createServer((req, res) => {
           let o = raw; if (typeof raw === 'string') { const s = raw.indexOf('{'), e = raw.lastIndexOf('}'); o = JSON.parse(s >= 0 ? raw.slice(s, e + 1) : raw); }
           const niches = (Array.isArray(o['ниши']) ? o['ниши'] : []).slice(0, 5).map(function (n) {
             n = n || {}; const sw = n['свот'] || {};
-            return { 'название': String(n['название'] || '').trim(), 'суть': String(n['суть'] || '').trim(),
+            return { 'название': String(n['название'] || '').trim(), 'суть': String(n['суть'] || '').trim(), 'потенциал': String(n['потенциал'] || '').trim(),
               'свот': { 'сильные': String(sw['сильные'] || '').trim(), 'слабые': String(sw['слабые'] || '').trim(), 'возможности': String(sw['возможности'] || '').trim(), 'риски': String(sw['риски'] || '').trim(), 'запасной_ход': String(sw['запасной_ход'] || '').trim() } };
           });
           res.writeHead(200, JSONH); return res.end(JSON.stringify({ 'ниши': niches }));
         } catch (e) { console.error('[BIZ] niches ошибка:', e.message); res.writeHead(200, JSONH); return res.end('{"ниши":[]}'); }
+      }
+      // === Своё дело: ядро отчёта частями (короткие запросы) ===
+      if (mode === 'biz_core_a' || mode === 'biz_core_b') {
+        try {
+          const raw = await callModel(buildBizCoreMessages(profile, mode === 'biz_core_a' ? 'a' : 'b'));
+          let o = raw; if (typeof raw === 'string') { const s = raw.indexOf('{'), e = raw.lastIndexOf('}'); o = JSON.parse(s >= 0 ? raw.slice(s, e + 1) : raw); }
+          const sysIn = (o && o.sys && typeof o.sys === 'object') ? o.sys : {};
+          const sys = {};
+          ['big5','riasec','base','workstyle','psyche','ikigai','skills','klimov','burnout'].forEach(k => { if (sysIn[k]) sys[k] = String(sysIn[k]).trim(); });
+          res.writeHead(200, JSONH);
+          return res.end(JSON.stringify({
+            portrait: String((o && o.portrait) || '').trim(),
+            summary: String((o && o.summary) || '').trim(),
+            sys: sys,
+            scenarios: (o && Array.isArray(o.scenarios)) ? o.scenarios.slice(0, 3).map(s => ({ prob: String(s.prob || '').trim(), title: String(s.title || '').trim(), text: String(s.text || '').trim() })) : []
+          }));
+        } catch (e) { console.error('[BIZ] core ошибка:', e.message); res.writeHead(200, JSONH); return res.end('{}'); }
       }
       // === Своё дело: мини-бизнес-план по нише ===
       if (mode === 'biz_plan') {
